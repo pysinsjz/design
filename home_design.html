@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>户型设计互动页面</title>
+    <style>
+        #designContainer {
+            position: relative;
+            display: inline-block;
+        }
+        #designImage {
+            max-width: 100%;
+            height: auto;
+            display: none; /* 初始不显示 */
+        }
+        .marker {
+            position: absolute;
+            cursor: pointer;
+            color: red;
+            font-weight: bold;
+        }
+        .deleteMarkerBtn {
+            background: none;
+            border: none;
+            color: red;
+            cursor: pointer;
+            margin-left: 5px;
+        }
+        #popup, #newFurniturePopup {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            border: 1px solid #ddd;
+            background-color: #fff;
+            padding: 20px;
+            box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.5);
+            z-index: 10;
+        }
+        #popupClose, #newFurniturePopupClose {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        #furnitureList {
+            list-style-type: none;
+            padding: 0;
+        }
+        #furnitureList li {
+            display: flex;
+            justify-content: space-between;
+        }
+        #furnitureList a {
+            color: blue;
+            text-decoration: none;
+        }
+    </style>
+</head>
+<body>
+    <input type="file" id="imageUpload" accept="image/*">
+    <div id="designContainer">
+        <img id="designImage" alt="户型设计图">
+    </div>
+
+    <div id="popup">
+        <span id="popupClose">X</span>
+        <h3>家具备选列表</h3>
+        <ul id="furnitureList"></ul>
+        <button id="addFurnitureBtn">新增</button>
+    </div>
+
+    <div id="newFurniturePopup">
+        <span id="newFurniturePopupClose">X</span>
+        <h3 id="popupTitle">新增家具</h3>
+        <input type="text" id="furnitureNameInput" placeholder="名称">
+        <input type="text" id="furnitureLinkInput" placeholder="链接">
+        <input type="text" id="furniturePriceInput" placeholder="价格">
+        <button id="saveFurnitureBtn">保存</button>
+    </div>
+
+    <script>
+        const imageUpload = document.getElementById('imageUpload');
+        const designContainer = document.getElementById('designContainer');
+        const designImage = document.getElementById('designImage');
+        const popup = document.getElementById('popup');
+        const popupClose = document.getElementById('popupClose');
+        const furnitureList = document.getElementById('furnitureList');
+        const addFurnitureBtn = document.getElementById('addFurnitureBtn');
+
+        const newFurniturePopup = document.getElementById('newFurniturePopup');
+        const newFurniturePopupClose = document.getElementById('newFurniturePopupClose');
+        const furnitureNameInput = document.getElementById('furnitureNameInput');
+        const furnitureLinkInput = document.getElementById('furnitureLinkInput');
+        const furniturePriceInput = document.getElementById('furniturePriceInput');
+        const saveFurnitureBtn = document.getElementById('saveFurnitureBtn');
+        const popupTitle = document.getElementById('popupTitle');
+
+        let markers = [];
+        let currentMarkerIndex = null;
+        let editingFurnitureIndex = null;
+
+        imageUpload.addEventListener('change', function(event) {
+            const file = event.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    designImage.src = e.target.result;
+                    designImage.style.display = 'block';
+                    saveImageData(e.target.result);
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+
+        designImage.addEventListener('click', function(event) {
+            const x = event.offsetX;
+            const y = event.offsetY;
+            const content = prompt('输入标注内容:');
+            if (content) {
+                const marker = { x, y, content, furnitureItems: [] };
+                markers.push(marker);
+                renderMarker(marker);
+                saveData();
+            }
+        });
+
+        popupClose.addEventListener('click', function() {
+            popup.style.display = 'none';
+        });
+
+        newFurniturePopupClose.addEventListener('click', function() {
+            newFurniturePopup.style.display = 'none';
+        });
+
+        addFurnitureBtn.addEventListener('click', function() {
+            editingFurnitureIndex = null;
+            popupTitle.textContent = '新增家具';
+            furnitureNameInput.value = '';
+            furnitureLinkInput.value = '';
+            furniturePriceInput.value = '';
+            newFurniturePopup.style.display = 'block';
+        });
+
+        saveFurnitureBtn.addEventListener('click', function() {
+            const name = furnitureNameInput.value;
+            const link = furnitureLinkInput.value;
+            const price = furniturePriceInput.value;
+            if (name && link && price && currentMarkerIndex !== null) {
+                if (editingFurnitureIndex !== null) {
+                    markers[currentMarkerIndex].furnitureItems[editingFurnitureIndex] = { name, link, price };
+                } else {
+                    markers[currentMarkerIndex].furnitureItems.push({ name, link, price });
+                }
+                loadFurnitureList(markers[currentMarkerIndex].furnitureItems);
+                newFurniturePopup.style.display = 'none';
+                saveData();
+            }
+        });
+
+        function renderMarker(marker) {
+            const markerDiv = document.createElement('div');
+            markerDiv.classList.add('marker');
+            markerDiv.style.left = `${marker.x}px`;
+            markerDiv.style.top = `${marker.y}px`;
+            markerDiv.innerHTML = marker.content + ' <button class="deleteMarkerBtn">删除</button>';
+
+            markerDiv.addEventListener('dblclick', function() {
+                currentMarkerIndex = markers.indexOf(marker);
+                loadFurnitureList(marker.furnitureItems);
+                popup.style.display = 'block';
+            });
+
+            const deleteButton = markerDiv.querySelector('.deleteMarkerBtn');
+            deleteButton.addEventListener('click', function(event) {
+                event.stopPropagation();
+                const markerIndex = markers.indexOf(marker);
+                markers.splice(markerIndex, 1);
+                designContainer.removeChild(markerDiv);
+                saveData();
+            });
+
+            designContainer.appendChild(markerDiv);
+        }
+
+        function renderFurnitureItem(item, index) {
+            const listItem = document.createElement('li');
+            const link = document.createElement('a');
+            link.textContent = `${item.name} - ${item.price}`;
+            link.href = item.link;
+            link.target = '_blank';
+
+            const editBtn = document.createElement('button');
+            editBtn.textContent = '编辑';
+            editBtn.addEventListener('click', function() {
+                editingFurnitureIndex = index;
+                popupTitle.textContent = '编辑家具';
+                furnitureNameInput.value = item.name;
+                furnitureLinkInput.value = item.link;
+                furniturePriceInput.value = item.price;
+                newFurniturePopup.style.display = 'block';
+            });
+
+            const removeBtn = document.createElement('button');
+            removeBtn.textContent = '删除';
+            removeBtn.addEventListener('click', function() {
+                markers[currentMarkerIndex].furnitureItems.splice(index, 1);
+                loadFurnitureList(markers[currentMarkerIndex].furnitureItems);
+                saveData();
+            });
+
+            listItem.appendChild(link);
+            listItem.appendChild(editBtn);
+            listItem.appendChild(removeBtn);
+            furnitureList.appendChild(listItem);
+        }
+
+        function loadFurnitureList(items) {
+            furnitureList.innerHTML = '';
+            items.forEach((item, index) => renderFurnitureItem(item, index));
+        }
+
+        function saveData() {
+            const data = { markers };
+            localStorage.setItem('designData', JSON.stringify(data));
+        }
+
+        function saveImageData(imageData) {
+            localStorage.setItem('designImage', imageData);
+        }
+
+        function loadData() {
+            const savedData = localStorage.getItem('designData');
+            const savedImage = localStorage.getItem('designImage');
+            if (savedImage) {
+                designImage.src = savedImage;
+                designImage.style.display = 'block';
+            }
+            if (savedData) {
+                const data = JSON.parse(savedData);
+                markers = data.markers || [];
+                markers.forEach(renderMarker);
+            }
+        }
+
+        window.addEventListener('load', loadData);
+    </script>
+</body>
+</html>
